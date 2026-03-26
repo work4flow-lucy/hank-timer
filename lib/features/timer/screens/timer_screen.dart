@@ -24,7 +24,15 @@ class TimerScreen extends StatelessWidget {
                   builder: (context, timer, _) {
                     return Column(
                       children: [
-                        // ── Wheel Picker (THE display) ────
+                        // ── Large Display ─────
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildLargeDisplay(timer),
+                        ),
+
+                        const SizedBox(height: 20),
+
+                        // ── Wheel Picker ────
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 24),
                           child: Container(
@@ -120,6 +128,68 @@ class TimerScreen extends StatelessWidget {
               size: 24,
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLargeDisplay(TimerProvider timer) {
+    String mainNum;
+    String unit;
+
+    if (timer.isRunning || timer.isPaused) {
+      if (timer.hours > 0) {
+        mainNum = '${timer.hours}:${timer.minutes.toString().padLeft(2, '0')}:${timer.seconds.toString().padLeft(2, '0')}';
+        unit = '';
+      } else {
+        mainNum = '${timer.minutes}:${timer.seconds.toString().padLeft(2, '0')}';
+        unit = '';
+      }
+    } else if (timer.status.name == 'completed') {
+      mainNum = "Time's";
+      unit = 'up';
+    } else {
+      if (timer.hours > 0) {
+        mainNum = '${timer.hours}:${timer.minutes.toString().padLeft(2, '0')}';
+        unit = '';
+      } else {
+        mainNum = '${timer.minutes}';
+        unit = 'min';
+      }
+    }
+
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              mainNum,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 94,
+                fontWeight: FontWeight.w300,
+                color: CupertinoColors.white,
+                fontFeatures: [FontFeature.tabularFigures()],
+                letterSpacing: -4,
+                height: 1,
+              ),
+            ),
+          ),
+          if (unit.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              unit,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w300,
+                color: Color(0xFF8E8E93),
+                letterSpacing: -0.3,
+              ),
+            ),
+          ],
         ],
       ),
     );

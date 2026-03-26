@@ -1,4 +1,136 @@
 import 'package:flutter/cupertino.dart';
+import 'package:flutter/widgets.dart' as fw;
+
+/// 360° looping picker column using PageView
+class _LoopingPicker extends StatefulWidget {
+  final int maxValue;
+  final int initialValue;
+  final ValueChanged<int> onChanged;
+
+  static const double itemHeight = 36.0;
+  static const int visibleCount = 7;
+
+  const _LoopingPicker({
+    super.key,
+    required this.maxValue,
+    required this.initialValue,
+    required this.onChanged,
+  });
+
+  @override
+  State<_LoopingPicker> createState() => _LoopingPickerState();
+}
+
+class _LoopingPickerState extends State<_LoopingPicker> {
+  late PageController _controller;
+  int _currentValue = 0;
+  static const int _loopMultiplier = 100; // large enough to feel infinite
+
+  int get _itemCount => (widget.maxValue + 1) * (_loopMultiplier * 2 + 1);
+
+  int _pageToValue(int page) {
+    final int itemCount = widget.maxValue + 1;
+    final int value = page % itemCount;
+    return ((value % itemCount) + itemCount) % itemCount;
+  }
+
+  int _valueToPage(int value) {
+    return value + _loopMultiplier * (widget.maxValue + 1);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _currentValue = widget.initialValue;
+    final startPage = _valueToPage(widget.initialValue);
+    _controller = PageController(
+      initialPage: startPage,
+      viewportFraction: _LoopingPicker.itemHeight * _LoopingPicker.visibleCount / 400,
+    );
+    _controller.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _controller.removeListener(_onScroll);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (!_controller.hasClients) return;
+    final page = _controller.page ?? _controller.page!.toDouble();
+    final newValue = _pageToValue(page.round());
+    if (newValue != _currentValue) {
+      _currentValue = newValue;
+      widget.onChanged(newValue);
+    }
+  }
+
+  void jumpTo(int value) {
+    if (_controller.hasClients) {
+      _controller.jumpToPage(_valueToPage(value));
+      _currentValue = value;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: _LoopingPicker.itemHeight * _LoopingPicker.visibleCount,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          PageView.builder(
+            controller: _controller,
+            scrollDirection: Axis.vertical,
+            itemCount: _itemCount,
+            itemBuilder: (ctx, index) {
+              final int itemCount = widget.maxValue + 1;
+              final int value = index % itemCount;
+              const int distFromCenter = 2;
+              final double scale = 1.0 - (distFromCenter * 0.175);
+              final double opacity = 1.0 - (distFromCenter * 0.22);
+              final double fontSize = 90.0 * scale.clamp(0.0, 1.0);
+
+              return Center(
+                child: Opacity(
+                  opacity: opacity.clamp(0.0, 1.0),
+                  child: Text(
+                    value.toString().padLeft(2, '0'),
+                    style: TextStyle(
+                      fontSize: fontSize,
+                      fontWeight: FontWeight.w300,
+                      color: CupertinoColors.white,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      letterSpacing: -4,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Selection band overlay
+          Positioned(
+            top: _LoopingPicker.itemHeight * 3,
+            left: 4,
+            right: 4,
+            child: IgnorePointer(
+              child: Container(
+                height: _LoopingPicker.itemHeight,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF3A3A3C),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class TimerWheel extends StatefulWidget {
   final int initialHours;
@@ -19,34 +151,37 @@ class TimerWheel extends StatefulWidget {
 }
 
 class _TimerWheelState extends State<TimerWheel> {
-  late FixedExtentScrollController _hoursController;
-  late FixedExtentScrollController _minutesController;
-  late FixedExtentScrollController _secondsController;
+  // Current selected values (tracked in state)
+  late int _hours;
+  late int _minutes;
+  late int _seconds;
 
-  static const double _itemHeight = 50.0;  // iOS picker item height
-  static const int _visibleCount = 5;
-  static const int _padding = 2;           // blank items at top/bottom
+  // Keys to access _LoopingPicker state for external sync
+  final _hoursKey = GlobalKey<_LoopingPickerState>();
+  final _minutesKey = GlobalKey<_LoopingPickerState>();
+  final _secondsKey = GlobalKey<_LoopingPickerState>();
 
   @override
   void initState() {
     super.initState();
-    _hoursController = FixedExtentScrollController(
-      initialItem: widget.initialHours + _padding,
-    );
-    _minutesController = FixedExtentScrollController(
-      initialItem: widget.initialMinutes + _padding,
-    );
-    _secondsController = FixedExtentScrollController(
-      initialItem: widget.initialSeconds + _padding,
-    );
+    _hours = widget.initialHours;
+    _minutes = widget.initialMinutes;
+    _seconds = widget.initialSeconds;
   }
 
   @override
-  void dispose() {
-    _hoursController.dispose();
-    _minutesController.dispose();
-    _secondsController.dispose();
-    super.dispose();
+  void didUpdateWidget(TimerWheel old) {
+    super.didUpdateWidget(old);
+    // Sync when parent changes values externally (e.g. loading a preset)
+    if (old.initialHours != widget.initialHours) {
+      _hoursKey.currentState?.jumpTo(widget.initialHours);
+    }
+    if (old.initialMinutes != widget.initialMinutes) {
+      _minutesKey.currentState?.jumpTo(widget.initialMinutes);
+    }
+    if (old.initialSeconds != widget.initialSeconds) {
+      _secondsKey.currentState?.jumpTo(widget.initialSeconds);
+    }
   }
 
   @override
@@ -56,35 +191,47 @@ class _TimerWheelState extends State<TimerWheel> {
         const SizedBox(height: 8),
         // Wheel row: 3 columns with hairline dividers, no colons
         SizedBox(
-          height: _itemHeight * _visibleCount,
+          height: _LoopingPicker.itemHeight * _LoopingPicker.visibleCount,
           child: Row(
             children: [
               // Hours column
               Expanded(
-                child: _buildPickerColumn(
-                  controller: _hoursController,
+                child: _LoopingPicker(
+                  key: _hoursKey,
                   maxValue: 23,
-                  onChanged: (v) => widget.onChanged(v, _getMinutes(), _getSeconds()),
+                  initialValue: _hours,
+                  onChanged: (v) {
+                    setState(() => _hours = v);
+                    widget.onChanged(v, _minutes, _seconds);
+                  },
                 ),
               ),
               // Hairline divider 1
               Container(width: 0.5, color: const Color(0xFF38383A)),
               // Minutes column
               Expanded(
-                child: _buildPickerColumn(
-                  controller: _minutesController,
+                child: _LoopingPicker(
+                  key: _minutesKey,
                   maxValue: 59,
-                  onChanged: (v) => widget.onChanged(_getHours(), v, _getSeconds()),
+                  initialValue: _minutes,
+                  onChanged: (v) {
+                    setState(() => _minutes = v);
+                    widget.onChanged(_hours, v, _seconds);
+                  },
                 ),
               ),
               // Hairline divider 2
               Container(width: 0.5, color: const Color(0xFF38383A)),
               // Seconds column
               Expanded(
-                child: _buildPickerColumn(
-                  controller: _secondsController,
+                child: _LoopingPicker(
+                  key: _secondsKey,
                   maxValue: 59,
-                  onChanged: (v) => widget.onChanged(_getHours(), _getMinutes(), v),
+                  initialValue: _seconds,
+                  onChanged: (v) {
+                    setState(() => _seconds = v);
+                    widget.onChanged(_hours, _minutes, v);
+                  },
                 ),
               ),
             ],
@@ -108,81 +255,9 @@ class _TimerWheelState extends State<TimerWheel> {
     );
   }
 
-  int _getHours() => (_hoursController.selectedItem - _padding).clamp(0, 23);
-  int _getMinutes() => (_minutesController.selectedItem - _padding).clamp(0, 59);
-  int _getSeconds() => (_secondsController.selectedItem - _padding).clamp(0, 59);
-
-  Widget _buildPickerColumn({
-    required FixedExtentScrollController controller,
-    required int maxValue,
-    required ValueChanged<int> onChanged,
-  }) {
-    final totalItems = maxValue + 1 + _padding * 2;
-
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // iOS-style picker with iOS 94pt-style center item
-        CupertinoPicker(
-          scrollController: controller,
-          itemExtent: _itemHeight,
-          selectionOverlay: const SizedBox.shrink(),
-          onSelectedItemChanged: (index) {
-            final value = index - _padding;
-            if (value >= 0 && value <= maxValue) {
-              onChanged(value);
-            }
-          },
-          children: List.generate(totalItems, (index) {
-            final value = index - _padding;
-            if (value < 0 || value > maxValue) {
-              return SizedBox(height: _itemHeight);
-            }
-            // Distance from center (center = index 2 in 5-item window)
-            final distFromCenter = (index - 2).abs();
-            // Scale: center=1.0, outer items smaller (~65% for extreme)
-            final scale = 1.0 - (distFromCenter * 0.175);
-            // Opacity: center=1.0, outer items fade
-            final opacity = 1.0 - (distFromCenter * 0.22);
-            // Font size: center=90pt (matches iOS spec 94pt), outer items scale down
-            final fontSize = 90.0 * scale.clamp(0.0, 1.0);
-
-            return Center(
-              child: Opacity(
-                opacity: opacity.clamp(0.0, 1.0),
-                child: Text(
-                  value.toString(), // No leading zero — matches iOS spec
-                  style: TextStyle(
-                    fontSize: fontSize,
-                    fontWeight: FontWeight.w300,
-                    color: CupertinoColors.white,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                    letterSpacing: -4,
-                    height: 1,
-                  ),
-                ),
-              ),
-            );
-          }),
-        ),
-
-        // Selection band overlay (subtle)
-        Positioned(
-          top: _itemHeight * 2,
-          left: 0,
-          right: 0,
-          child: Container(
-            height: _itemHeight,
-            margin: const EdgeInsets.symmetric(horizontal: 8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF2C2C2E).withValues(alpha: 0.25),
-              borderRadius: BorderRadius.circular(8),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  int _getHours() => _hours;
+  int _getMinutes() => _minutes;
+  int _getSeconds() => _seconds;
 }
 
 class _UnitLabel extends StatelessWidget {
